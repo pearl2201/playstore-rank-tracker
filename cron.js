@@ -61,7 +61,7 @@ export async function runScrapingPipeline() {
             for (const cat of CATEGORIES) {
                 try {
                     const trackingKey = `${country}_${coll.name}_${cat}`;
-
+                    console.log(`[-] ${trackingKey}`);
                     // Defensive checks: ensure collection and category exist before scraping
                     const collectionValue = coll && coll.value;
                     const categoryValue = gplay && gplay.category ? gplay.category[cat] : undefined;
