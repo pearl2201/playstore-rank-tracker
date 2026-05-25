@@ -138,9 +138,15 @@
                                 <div class="min-w-0">
                                     <p class="text-slate-200 font-semibold text-sm sm:text-base truncate group-hover:text-white transition">${app.title}</p>
                                     <p class="text-slate-500 font-mono text-[11px] truncate mt-0.5">${app.app_id}</p>
+                                    <p class="text-slate-400 text-xs mt-1">Score: <span class="font-bold text-indigo-400">${app.score !== undefined && app.score !== null ? app.score : '—'}</span></p>
                                 </div>
-                                <div class="ml-auto text-slate-700 group-hover:text-slate-400 pl-2 transition hidden sm:block">
-                                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                                <div class="ml-auto flex items-center gap-3">
+                                    <a href="${app.url || '#'}" target="_blank" class="text-slate-400 hover:text-indigo-300 transition hidden sm:inline-flex items-center gap-2">
+                                        <i class="fa-brands fa-google-play text-lg"></i>
+                                    </a>
+                                    <div class="text-slate-700 group-hover:text-slate-400 pl-2 transition hidden sm:block">
+                                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -180,7 +186,10 @@
                                         <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-indigo-500"></div>
                                         <div class="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800">
                                             <span class="text-slate-400 text-xs font-medium">${dateString}</span>
-                                            <span class="font-bold text-indigo-400 text-xs bg-indigo-500/10 px-2 py-0.5 rounded">Rank #${item.rank}</span>
+                                            <div class="flex items-center gap-3">
+                                                <span class="font-bold text-indigo-400 text-xs bg-indigo-500/10 px-2 py-0.5 rounded">Rank #${item.rank}</span>
+                                                <span class="text-slate-400 text-xs">Score: <span class="font-semibold text-indigo-300">${item.score !== undefined && item.score !== null ? item.score : '—'}</span></span>
+                                            </div>
                                         </div>
                                     </div>
                                 `;

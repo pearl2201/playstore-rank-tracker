@@ -73,15 +73,28 @@ export async function runScrapingPipeline() {
                         lang: 'en'
                     });
 
-                    // Build lookup dictionary for the batch
+                    // Build lookup dictionary for the batch (include score and url)
                     const todaySnapshot = {};
-                    liveApps.forEach((app, index) => {
+                    for (let index = 0; index < liveApps.length; index++) {
+                        const app = liveApps[index];
+                        let score = undefined;
+                        let url = `https://play.google.com/store/apps/details?id=${app.appId}&hl=en&gl=${country.toUpperCase()}`;
+                        try {
+                            const details = await gplay.app({ appId: app.appId, country: country, lang: 'en' });
+                            score = typeof details.score === 'number' ? details.score : (details.scoreText ? parseFloat(details.scoreText) : undefined);
+                            if (details.url) url = details.url;
+                        } catch (e) {
+                            // If detailed fetch fails, fall back to constructed URL and undefined score
+                        }
+
                         todaySnapshot[app.appId] = {
                             rank: index + 1,
                             title: app.title,
-                            icon: app.icon
+                            icon: app.icon,
+                            score: score,
+                            url: url
                         };
-                    });
+                    }
 
                     // 2. Query relative historical segment matching this criteria matrix subset 
                     const yesterdayDocs = await db.current_ranks.find({ segment: trackingKey });
@@ -126,6 +139,8 @@ export async function runScrapingPipeline() {
                             title: todaySnapshot[appId].title,
                             icon: todaySnapshot[appId].icon,
                             current_rank: todaySnapshot[appId].rank,
+                            score: todaySnapshot[appId].score,
+                            url: todaySnapshot[appId].url,
                             last_updated: todayDate
                         });
 
@@ -134,6 +149,8 @@ export async function runScrapingPipeline() {
                             app_id: appId,
                             title: todaySnapshot[appId].title,
                             rank: todaySnapshot[appId].rank,
+                            score: todaySnapshot[appId].score,
+                            url: todaySnapshot[appId].url,
                             date: todayDate
                         });
                     }
