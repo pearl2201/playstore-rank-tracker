@@ -1,0 +1,28 @@
+[Unit]
+Description=Play Store Rank Tracker App Workspace
+Documentation=https://github.com/pearl2201
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# Ensure this points to your exact repository path on the Vultr VPS
+WorkingDirectory=/root/playstore-tracker
+# Path to your system's node binary and your entry server file
+ExecStart=/usr/bin/node server.js
+
+# Restart rules logic tracking crashes
+Restart=always
+# Wait 5 seconds before trying to spin back up after a failure
+RestartSec=5s
+
+# Logging configurations
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=playstore-tracker
+
+# Environmental variable injection alternatives
+Environment=NODE_ENV=production PORT=3000
+
+[Install]
+WantedBy=multi-user.target
