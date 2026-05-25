@@ -52,10 +52,22 @@ export async function runScrapingPipeline() {
                 try {
                     const trackingKey = `${country}_${coll.name}_${cat}`;
 
+                    // Defensive checks: ensure collection and category exist before scraping
+                    const collectionValue = coll && coll.value;
+                    const categoryValue = gplay && gplay.category ? gplay.category[cat] : undefined;
+                    if (typeof collectionValue === 'undefined') {
+                        console.error(`Skipping scrape: unknown collection value for ${coll && coll.name}`);
+                        continue;
+                    }
+                    if (typeof categoryValue === 'undefined') {
+                        console.error(`Skipping scrape: unknown category '${cat}' for country ${country} and collection ${coll.name}`);
+                        continue;
+                    }
+
                     // 1. Live Google Play Chart Scrape execution
                     const liveApps = await gplay.list({
-                        collection: coll.value,
-                        category: gplay.category[cat],
+                        collection: collectionValue,
+                        category: categoryValue,
                         num: 100,
                         country: country,
                         lang: 'en'
@@ -135,7 +147,8 @@ export async function runScrapingPipeline() {
                     await new Promise(resolve => setTimeout(resolve, 1000));
 
                 } catch (err) {
-                    console.error(`Error scraping pipeline matrix context [${country} | ${coll.name} | ${cat}]:`, err.message);
+                    console.error(`Error scraping pipeline matrix context [${country} | ${coll.name} | ${cat}]:`, err && err.message ? err.message : err);
+                    if (err && err.stack) console.error(err.stack);
                 }
             }
         }
