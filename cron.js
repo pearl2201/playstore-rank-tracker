@@ -27,13 +27,23 @@ const COLLECTIONS = [
 // Read country array from env configuration setup
 const COUNTRIES = (process.env.TRACKED_COUNTRIES || 'us').split(',').map(c => c.trim().toLowerCase());
 
+// 1. Update the helper function to use HTML parsing
 async function sendTelegramAlert(message) {
     if (!bot || !chatId) return;
     try {
-        await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        // Switch parse_mode from 'Markdown' to 'HTML'
+        await bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
     } catch (err) {
         console.error("Telegram notification failed:", err.message);
     }
+}
+
+// 2. Add a simple HTML escaping utility helper
+function escapeHTML(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 
 export async function runScrapingPipeline() {
@@ -107,7 +117,8 @@ export async function runScrapingPipeline() {
                     // 3. Status checks inside segment boundary lines
                     for (const appId in yesterdayApps) {
                         if (!todaySnapshot[appId]) {
-                            segmentDropped.push(`❌ *${yesterdayApps[appId].title}* (\`${appId}\`) dropped out of ${coll.name} -> ${cat} (${country.toUpperCase()})`);
+                            const safeTitle = escapeHTML(yesterdayApps[appId].title);
+                            segmentDropped.push(`❌ <b>${safeTitle}</b> (<code>${appId}</code>) dropped out of ${coll.name} -> ${cat} (${country.toUpperCase()})`);
                             totalDroppedOut++;
                         }
                     }
@@ -116,7 +127,8 @@ export async function runScrapingPipeline() {
                         if (!yesterdayApps[appId]) {
                             const historicMatch = await db.rank_history.findOne({ app_id: appId, segment: trackingKey });
                             if (historicMatch) {
-                                segmentReturned.push(`🔄 *${todaySnapshot[appId].title}* (\`${appId}\`) returned to ${coll.name} -> ${cat} (${country.toUpperCase()}) at Rank #${todaySnapshot[appId].rank}`);
+                                const safeTitle = escapeHTML(todaySnapshot[appId].title);
+                                segmentReturned.push(`🔄 <b>${safeTitle}</b> (<code>${appId}</code>) returned to ${coll.name} -> ${cat} (${country.toUpperCase()}) at Rank #${todaySnapshot[appId].rank}`);
                                 totalReturnedBack++;
                             }
                         }
@@ -173,7 +185,7 @@ export async function runScrapingPipeline() {
 
     // Dispatch accumulated summary changes to telegram
     if (alertsLog.length > 0) {
-        await sendTelegramAlert(`*Daily Rank Status Report Update*\n\n${alertsLog.slice(0, 15).join('\n')}\n${alertsLog.length > 15 ? '...and more metrics available via dashboard panel' : ''}`);
+        await sendTelegramAlert(`<b>Daily Rank Status Report Update</b>\n\n${alertsLog.slice(0, 15).join('\n')}\n${alertsLog.length > 15 ? '<i>...and more metrics available via dashboard panel</i>' : ''}`);
     }
 
     // Write global metadata index snapshot point
@@ -184,9 +196,9 @@ export async function runScrapingPipeline() {
     });
 
     // 30-day data purging retention rules maintenance execution
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    await db.rank_history.remove({ date: { $lt: thirtyDaysAgo } }, { multi: true });
+    // const thirtyDaysAgo = new Date();
+    // thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // await db.rank_history.remove({ date: { $lt: thirtyDaysAgo } }, { multi: true });
 
     console.log(`[${new Date().toISOString()}] Global pipeline scraping cycle execution completed.`);
 }
