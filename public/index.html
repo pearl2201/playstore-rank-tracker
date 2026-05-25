@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Play Store Insights</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30">
+
+    <div class="max-w-6xl mx-auto px-4 py-8">
+        
+        <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-6 mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+                    <span class="text-indigo-500 bg-indigo-500/10 p-2 rounded-xl"><i class="fa-solid fa-chart-line"></i></span> 
+                    Global Play Store App Insights
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">Cross-category analysis engine handling automation cycles internally without cron constraints.</p>
+            </div>
+            <button onclick="triggerScrape()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-medium text-sm px-4 py-2.5 rounded-lg transition flex items-center gap-2 shadow-sm self-start lg:self-auto">
+                <i class="fa-solid fa-arrows-rotate" id="sync-icon"></i> Execute Full Data Sync
+            </button>
+        </header>
+
+        <section class="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-8 shadow-md">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3.5 flex items-center gap-2">
+                <i class="fa-solid fa-sliders text-indigo-400"></i> Active Matrix Data Filters
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Country</label>
+                    <select id="filter-country" onchange="loadRankings()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Collection Chart</label>
+                    <select id="filter-collection" onchange="loadRankings()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition">
+                        <option value="TOP_FREE">Top Free Games</option>
+                        <option value="TOP_PAID">Top Paid Games</option>
+                        <option value="GROSSING">Grossing Games</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1.5">Game Category Domain</label>
+                    <select id="filter-category" onchange="loadRankings()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition">
+                        <option value="GAME">All Games</option>
+                        <option value="GAME_ACTION">Action</option>
+                        <option value="GAME_ADVENTURE">Adventure</option>
+                        <option value="GAME_ARCADE">Arcade</option>
+                        <option value="GAME_BOARD">Board</option>
+                        <option value="GAME_CARD">Card</option>
+                        <option value="GAME_CASINO">Casino</option>
+                        <option value="GAME_CASUAL">Casual</option>
+                        <option value="GAME_EDUCATIONAL">Educational</option>
+                        <option value="GAME_MUSIC">Music</option>
+                        <option value="GAME_PUZZLE">Puzzle</option>
+                        <option value="GAME_RACING">Racing</option>
+                        <option value="GAME_ROLE_PLAYING">Role Playing</option>
+                        <option value="GAME_SIMULATION">Simulation</option>
+                        <option value="GAME_SPORTS">Sports</option>
+                        <option value="GAME_STRATEGY">Strategy</option>
+                        <option value="GAME_TRIVIA">Trivia</option>
+                        <option value="GAME_WORD">Word</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <main>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden">
+                <div class="grid grid-cols-12 gap-2 bg-slate-900 border-b border-slate-800 px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400">
+                    <div class="col-span-2 sm:col-span-1">Rank</div>
+                    <div class="col-span-10 sm:col-span-11">App Profile Details</div>
+                </div>
+                
+                <div id="rank-container" class="divide-y divide-slate-800/50">
+                    <div class="p-8 text-center text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Initializing configuration states...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="history-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden transform transition-all scale-100">
+            <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                <h3 id="modal-title" class="font-bold text-white text-lg truncate pr-4">Rank Timeline Tracking</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white transition text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 max-h-[400px] overflow-y-auto" id="modal-content"></div>
+        </div>
+    </div>
+
+    <script>
+        async function initializeApp() {
+            try {
+                // Populate country configurations using server environment configuration data
+                const configRes = await fetch('/api/config');
+                const config = await configRes.json();
+                const countrySelect = document.getElementById('filter-country');
+                
+                countrySelect.innerHTML = config.countries.map(c => `<option value="${c}">${c}</option>`).join('');
+                
+                // Initial data load trigger execution
+                await loadRankings();
+            } catch (err) {
+                console.error("Initialization failure scenario:", err);
+            }
+        }
+
+        async function loadRankings() {
+            const country = document.getElementById('filter-country').value;
+            const collection = document.getElementById('filter-collection').value;
+            const category = document.getElementById('filter-category').value;
+            const container = document.getElementById('rank-container');
+
+            container.innerHTML = `<div class="p-8 text-center text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Pulling chart segment matrix data...</div>`;
+
+            try {
+                const res = await fetch(`/api/ranks?country=${country}&collection=${collection}&category=${category}`);
+                const ranks = await res.json();
+
+                if (ranks.length === 0) {
+                    container.innerHTML = `<div class="p-12 text-center text-slate-500 font-medium">No tracking history inside this specific configuration block. Run a fresh sync job to crawl data.</div>`;
+                    return;
+                }
+
+                container.innerHTML = ranks.map(app => {
+                    return `
+                        <div onclick="viewHistory('${app.app_id}', '${app.title.replace(/'/g, "\\'")}', '${app.segment}')" 
+                             class="grid grid-cols-12 gap-2 items-center px-6 py-3.5 hover:bg-slate-800/40 cursor-pointer transition group">
+                            <div class="col-span-2 sm:col-span-1 font-extrabold text-lg text-indigo-400 group-hover:text-indigo-300">
+                                #${app.current_rank}
+                            </div>
+                            <div class="col-span-10 sm:col-span-11 flex items-center min-w-0">
+                                <img class="w-10 h-10 rounded-xl shadow border border-slate-800 mr-4 flex-shrink-0" 
+                                     src="${app.icon}" alt="icon" onerror="this.src='https://placehold.co/40/1e293b/fff?text=🎮'">
+                                <div class="min-w-0">
+                                    <p class="text-slate-200 font-semibold text-sm sm:text-base truncate group-hover:text-white transition">${app.title}</p>
+                                    <p class="text-slate-500 font-mono text-[11px] truncate mt-0.5">${app.app_id}</p>
+                                </div>
+                                <div class="ml-auto text-slate-700 group-hover:text-slate-400 pl-2 transition hidden sm:block">
+                                    <i class="fa-solid fa-chevron-right text-xs"></i>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                container.innerHTML = `<div class="p-8 text-center text-rose-400">Failed to render dashboard matrices correctly.</div>`;
+            }
+        }
+
+        async function viewHistory(appId, appTitle, segmentKey) {
+            const modal = document.getElementById('history-modal');
+            const titleEl = document.getElementById('modal-title');
+            const contentEl = document.getElementById('modal-content');
+            
+            titleEl.innerText = appTitle;
+            contentEl.innerHTML = `<div class="text-center p-6 text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching records...</div>`;
+            modal.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/track/${appId}?segment=${segmentKey}`);
+                const history = await res.json();
+
+                if (history.length === 0) {
+                    contentEl.innerHTML = `<p class="text-slate-500 text-sm text-center py-4">No data movement archived inside this specific target group.</p>`;
+                    return;
+                }
+
+                contentEl.innerHTML = `
+                    <div class="space-y-4">
+                        <p class="text-[11px] text-slate-400 uppercase tracking-wider font-bold mb-2">30-Day Segment Context Tracking:</p>
+                        <div class="border-l border-slate-800 ml-2 space-y-3.5 pl-4 relative">
+                            ${history.map(item => {
+                                const dateString = new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                return `
+                                    <div class="relative">
+                                        <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-indigo-500"></div>
+                                        <div class="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800">
+                                            <span class="text-slate-400 text-xs font-medium">${dateString}</span>
+                                            <span class="font-bold text-indigo-400 text-xs bg-indigo-500/10 px-2 py-0.5 rounded">Rank #${item.rank}</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>`;
+            } catch (err) {
+                contentEl.innerHTML = `<p class="text-rose-400 text-xs">Error compiling timeline views.</p>`;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('history-modal').classList.add('hidden');
+        }
+
+        async function triggerScrape() {
+            const icon = document.getElementById('sync-icon');
+            icon.classList.add('fa-spin');
+            try {
+                const res = await fetch('/api/trigger-scrape', { method: 'POST' });
+                const data = await res.json();
+                alert(data.message);
+            } catch (err) {
+                alert("Runtime background trigger initialization anomaly.");
+            } finally {
+                icon.classList.remove('fa-spin');
+            }
+        }
+
+        window.onload = initializeApp;
+    </script>
+</body>
+</html>

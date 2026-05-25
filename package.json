@@ -1,0 +1,29 @@
+{
+  "name": "playstore-rank-tracker",
+  "version": "1.0.0",
+  "description": "An automated Google Play Store game ranking matrix tracker with internal scheduling and web dashboard.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "scrape:now": "node -e \"import('./cron.js').then(m => m.runScrapingPipeline())\""
+  },
+  "keywords": [
+    "google-play-scraper",
+    "node-cron",
+    "nedb",
+    "telegram-bot",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "google-play-scraper": "^10.1.2",
+    "mongodb": "^7.2.0",
+    "nedb-promises": "^6.2.3",
+    "node-cron": "^4.2.1",
+    "node-telegram-bot-api": "^0.67.0"
+  }
+}
