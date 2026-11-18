@@ -3,22 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Play Store Insights</title>
+    <title>Global Mobile Game Insights</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-indigo-500/30">
 
     <div class="max-w-6xl mx-auto px-4 py-8">
-        
+
         <header class="flex flex-col lg:flex-row lg:items-center lg:justify-between border-b border-slate-800 pb-6 mb-8 gap-4">
             <div>
                 <h1 class="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                    <span class="text-indigo-500 bg-indigo-500/10 p-2 rounded-xl"><i class="fa-solid fa-chart-line"></i></span> 
-                    Global Play Store App Insights
+                    <span class="text-indigo-500 bg-indigo-500/10 p-2 rounded-xl"><i class="fa-solid fa-chart-line"></i></span>
+                    Global Mobile Game Insights
                 </h1>
-                <p class="text-slate-400 text-sm mt-1">Cross-category analysis engine refreshed nightly by a dedicated scraper worker.</p>
+                <p class="text-slate-400 text-sm mt-1">Google Play and App Store game charts, refreshed nightly by a dedicated scraper worker.</p>
             </div>
+
+            <!-- Store switch -->
+            <div id="platform-tabs" class="inline-flex bg-slate-900 border border-slate-800 rounded-xl p-1 self-start lg:self-auto"></div>
         </header>
 
         <section class="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-8 shadow-md">
@@ -40,26 +43,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-400 mb-1.5">Game Category Domain</label>
-                    <select id="filter-category" onchange="loadRankings()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition">
-                        <option value="GAME">All Games</option>
-                        <option value="GAME_ACTION">Action</option>
-                        <option value="GAME_ADVENTURE">Adventure</option>
-                        <option value="GAME_ARCADE">Arcade</option>
-                        <option value="GAME_BOARD">Board</option>
-                        <option value="GAME_CARD">Card</option>
-                        <option value="GAME_CASINO">Casino</option>
-                        <option value="GAME_CASUAL">Casual</option>
-                        <option value="GAME_EDUCATIONAL">Educational</option>
-                        <option value="GAME_MUSIC">Music</option>
-                        <option value="GAME_PUZZLE">Puzzle</option>
-                        <option value="GAME_RACING">Racing</option>
-                        <option value="GAME_ROLE_PLAYING">Role Playing</option>
-                        <option value="GAME_SIMULATION">Simulation</option>
-                        <option value="GAME_SPORTS">Sports</option>
-                        <option value="GAME_STRATEGY">Strategy</option>
-                        <option value="GAME_TRIVIA">Trivia</option>
-                        <option value="GAME_WORD">Word</option>
-                    </select>
+                    <select id="filter-category" onchange="loadRankings()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition"></select>
                 </div>
             </div>
         </section>
@@ -70,11 +54,15 @@
                     <div class="col-span-2 sm:col-span-1">Rank</div>
                     <div class="col-span-10 sm:col-span-11">App Profile Details</div>
                 </div>
-                
+
                 <div id="rank-container" class="divide-y divide-slate-800/50">
                     <div class="p-8 text-center text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Initializing configuration states...</div>
                 </div>
             </div>
+            <p class="text-xs text-slate-500 mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span><span class="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></span>Confirmed: same bundle ID / package name on the other store</span>
+                <span><span class="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1.5"></span>Likely: same title and a similar developer name</span>
+            </p>
         </main>
     </div>
 
@@ -89,20 +77,75 @@
     </div>
 
     <script>
+        const STORE_ICONS = { android: 'fa-brands fa-google-play', ios: 'fa-brands fa-apple' };
+        const STORE_NAMES = { android: 'Google Play', ios: 'App Store' };
+
+        let platforms = [];
+        let currentPlatform = 'android';
+        let rankRows = [];   // rows of the chart currently displayed (used by click handlers)
+
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        // Only allow http(s) links coming from store data
+        function safeUrl(url) {
+            return /^https?:\/\//i.test(url || '') ? url : '#';
+        }
+
         async function initializeApp() {
             try {
-                // Populate country configurations using server environment configuration data
-                const configRes = await fetch('/api/config');
-                const config = await configRes.json();
-                const countrySelect = document.getElementById('filter-country');
-                
-                countrySelect.innerHTML = config.countries.map(c => `<option value="${c}">${c}</option>`).join('');
-                
-                // Initial data load trigger execution
+                const config = await (await fetch('/api/config')).json();
+                platforms = config.platforms;
+
+                document.getElementById('filter-country').innerHTML =
+                    config.countries.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+
+                renderPlatformTabs();
+                renderCategories();
                 await loadRankings();
             } catch (err) {
-                console.error("Initialization failure scenario:", err);
+                console.error('Initialization failure scenario:', err);
             }
+        }
+
+        function renderPlatformTabs() {
+            document.getElementById('platform-tabs').innerHTML = platforms.map(p => {
+                const active = p.id === currentPlatform;
+                return `<button onclick="selectPlatform('${esc(p.id)}')"
+                    class="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${active ? 'bg-indigo-500 text-white shadow' : 'text-slate-400 hover:text-white'}">
+                    <i class="${STORE_ICONS[p.id] || 'fa-solid fa-mobile'}"></i> ${esc(p.label)}
+                </button>`;
+            }).join('');
+        }
+
+        // Each store has its own category list (the App Store has no Arcade / Educational)
+        function renderCategories() {
+            const select = document.getElementById('filter-category');
+            const previous = select.value;
+            const platform = platforms.find(p => p.id === currentPlatform);
+            select.innerHTML = platform.categories.map(c => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('');
+            select.value = platform.categories.some(c => c.id === previous) ? previous : 'GAME';
+        }
+
+        async function selectPlatform(id) {
+            if (id === currentPlatform) return;
+            currentPlatform = id;
+            renderPlatformTabs();
+            renderCategories();
+            await loadRankings();
+        }
+
+        function otherStoreBadge(app) {
+            const o = app.other_store;
+            if (!o) return '';
+            const exact = o.match === 'exact';
+            const color = exact ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' : 'text-amber-300 border-amber-500/40 bg-amber-500/10';
+            const tip = `${exact ? 'Confirmed' : 'Likely'} match on ${STORE_NAMES[o.platform]}${o.title ? ': ' + o.title : ''}`;
+            return `<a href="${esc(safeUrl(o.url))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="${esc(tip)}"
+                       class="inline-flex items-center gap-1.5 text-[11px] font-semibold border rounded-full px-2 py-0.5 ${color} hover:brightness-125 transition">
+                       <i class="${STORE_ICONS[o.platform]}"></i> Also on ${esc(STORE_NAMES[o.platform])}${exact ? '' : ' ?'}
+                    </a>`;
         }
 
         async function loadRankings() {
@@ -110,64 +153,71 @@
             const collection = document.getElementById('filter-collection').value;
             const category = document.getElementById('filter-category').value;
             const container = document.getElementById('rank-container');
+            const platform = currentPlatform;
 
             container.innerHTML = `<div class="p-8 text-center text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Pulling chart segment matrix data...</div>`;
 
             try {
-                const res = await fetch(`/api/ranks?country=${country}&collection=${collection}&category=${category}`);
+                const params = new URLSearchParams({ platform, country, collection, category });
+                const res = await fetch(`/api/ranks?${params}`);
                 const ranks = await res.json();
+                if (platform !== currentPlatform) return; // user switched store while loading
+                rankRows = Array.isArray(ranks) ? ranks : [];
 
-                if (ranks.length === 0) {
-                    container.innerHTML = `<div class="p-12 text-center text-slate-500 font-medium">No tracking history inside this specific configuration block. Run a fresh sync job to crawl data.</div>`;
+                if (rankRows.length === 0) {
+                    container.innerHTML = `<div class="p-12 text-center text-slate-500 font-medium">No tracking history inside this specific configuration block. Ask an admin to run a crawl.</div>`;
                     return;
                 }
 
-                container.innerHTML = ranks.map(app => {
-                    return `
-                        <div onclick="viewHistory('${app.app_id}', '${app.title.replace(/'/g, "\\'")}', '${app.segment}')" 
-                             class="grid grid-cols-12 gap-2 items-center px-6 py-3.5 hover:bg-slate-800/40 cursor-pointer transition group">
-                            <div class="col-span-2 sm:col-span-1 font-extrabold text-lg text-indigo-400 group-hover:text-indigo-300">
-                                #${app.current_rank}
-                            </div>
-                            <div class="col-span-10 sm:col-span-11 flex items-center min-w-0">
-                                <img class="w-10 h-10 rounded-xl shadow border border-slate-800 mr-4 flex-shrink-0" 
-                                     src="${app.icon}" alt="icon" onerror="this.src='https://placehold.co/40/1e293b/fff?text=🎮'">
-                                <div class="min-w-0">
-                                    <p class="text-slate-200 font-semibold text-sm sm:text-base truncate group-hover:text-white transition">${app.title}</p>
-                                    <p class="text-slate-500 font-mono text-[11px] truncate mt-0.5">${app.app_id}</p>
-                                    <p class="text-slate-400 text-xs mt-1">Score: <span class="font-bold text-indigo-400">${app.score !== undefined && app.score !== null ? app.score : '—'}</span></p>
+                container.innerHTML = rankRows.map((app, i) => `
+                    <div onclick="viewHistory(${i})"
+                         class="grid grid-cols-12 gap-2 items-center px-6 py-3.5 hover:bg-slate-800/40 cursor-pointer transition group">
+                        <div class="col-span-2 sm:col-span-1 font-extrabold text-lg text-indigo-400 group-hover:text-indigo-300">
+                            #${esc(app.current_rank)}
+                        </div>
+                        <div class="col-span-10 sm:col-span-11 flex items-center min-w-0">
+                            <img class="w-10 h-10 rounded-xl shadow border border-slate-800 mr-4 flex-shrink-0"
+                                 src="${esc(safeUrl(app.icon))}" alt="icon" loading="lazy" onerror="this.src='https://placehold.co/40/1e293b/fff?text=🎮'">
+                            <div class="min-w-0">
+                                <p class="text-slate-200 font-semibold text-sm sm:text-base truncate group-hover:text-white transition">${esc(app.title)}</p>
+                                <p class="text-slate-500 font-mono text-[11px] truncate mt-0.5">${esc(app.bundle_id || app.app_id)}${app.developer ? ' · ' + esc(app.developer) : ''}</p>
+                                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                                    <span class="text-slate-400 text-xs">Score: <span class="font-bold text-indigo-400">${app.score !== null && app.score !== undefined ? Number(app.score).toFixed(2) : '—'}</span></span>
+                                    ${otherStoreBadge(app)}
                                 </div>
-                                <div class="ml-auto flex items-center gap-3">
-                                    <a href="${app.url || '#'}" target="_blank" class="text-slate-400 hover:text-indigo-300 transition hidden sm:inline-flex items-center gap-2">
-                                        <i class="fa-brands fa-google-play text-lg"></i>
-                                    </a>
-                                    <div class="text-slate-700 group-hover:text-slate-400 pl-2 transition hidden sm:block">
-                                        <i class="fa-solid fa-chevron-right text-xs"></i>
-                                    </div>
+                            </div>
+                            <div class="ml-auto flex items-center gap-3">
+                                <a href="${esc(safeUrl(app.url))}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+                                   title="Open on ${esc(STORE_NAMES[platform])}"
+                                   class="text-slate-400 hover:text-indigo-300 transition hidden sm:inline-flex items-center gap-2">
+                                    <i class="${STORE_ICONS[platform]} text-lg"></i>
+                                </a>
+                                <div class="text-slate-700 group-hover:text-slate-400 pl-2 transition hidden sm:block">
+                                    <i class="fa-solid fa-chevron-right text-xs"></i>
                                 </div>
                             </div>
                         </div>
-                    `;
-                }).join('');
+                    </div>`).join('');
             } catch (err) {
                 container.innerHTML = `<div class="p-8 text-center text-rose-400">Failed to render dashboard matrices correctly.</div>`;
             }
         }
 
-        async function viewHistory(appId, appTitle, segmentKey) {
+        async function viewHistory(index) {
+            const app = rankRows[index];
+            if (!app) return;
             const modal = document.getElementById('history-modal');
-            const titleEl = document.getElementById('modal-title');
             const contentEl = document.getElementById('modal-content');
-            
-            titleEl.innerText = appTitle;
+
+            document.getElementById('modal-title').innerText = app.title;
             contentEl.innerHTML = `<div class="text-center p-6 text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Fetching records...</div>`;
             modal.classList.remove('hidden');
 
             try {
-                const res = await fetch(`/api/track/${appId}?segment=${segmentKey}`);
+                const res = await fetch(`/api/track/${encodeURIComponent(app.app_id)}?segment=${encodeURIComponent(app.segment)}`);
                 const history = await res.json();
 
-                if (history.length === 0) {
+                if (!Array.isArray(history) || history.length === 0) {
                     contentEl.innerHTML = `<p class="text-slate-500 text-sm text-center py-4">No data movement archived inside this specific target group.</p>`;
                     return;
                 }
@@ -182,14 +232,13 @@
                                     <div class="relative">
                                         <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-indigo-500"></div>
                                         <div class="flex justify-between items-center bg-slate-950 p-2 rounded-lg border border-slate-800">
-                                            <span class="text-slate-400 text-xs font-medium">${dateString}</span>
+                                            <span class="text-slate-400 text-xs font-medium">${esc(dateString)}</span>
                                             <div class="flex items-center gap-3">
-                                                <span class="font-bold text-indigo-400 text-xs bg-indigo-500/10 px-2 py-0.5 rounded">Rank #${item.rank}</span>
-                                                <span class="text-slate-400 text-xs">Score: <span class="font-semibold text-indigo-300">${item.score !== undefined && item.score !== null ? item.score : '—'}</span></span>
+                                                <span class="font-bold text-indigo-400 text-xs bg-indigo-500/10 px-2 py-0.5 rounded">Rank #${esc(item.rank)}</span>
+                                                <span class="text-slate-400 text-xs">Score: <span class="font-semibold text-indigo-300">${item.score !== null && item.score !== undefined ? Number(item.score).toFixed(2) : '—'}</span></span>
                                             </div>
                                         </div>
-                                    </div>
-                                `;
+                                    </div>`;
                             }).join('')}
                         </div>
                     </div>`;

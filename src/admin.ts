@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { config } from './config.js';
 import { TrackedCountry, CrawlJob, enqueueCrawl } from './db.js';
+import { isPlatform } from './segments.js';
 
 export const adminRouter = Router();
 
@@ -102,14 +103,19 @@ adminRouter.get('/api/jobs', async (_req, res) => {
     res.json(await CrawlJob.findAll({ order: [['id', 'DESC']], limit: 20 }));
 });
 
-// Queue a re-crawl. Body: { country?: 'us' } (omit for all enabled countries)
+// Queue a re-crawl. Body: { country?: 'us', platform?: 'android' | 'ios' } (omit for everything)
 adminRouter.post('/api/jobs', async (req, res) => {
     const country = req.body?.country ? String(req.body.country).trim().toLowerCase() : null;
     if (country && !(await TrackedCountry.findByPk(country))) {
         res.status(400).json({ error: 'Country is not in the tracked list.' });
         return;
     }
-    const job = await enqueueCrawl('admin', country);
+    const rawPlatform = req.body?.platform;
+    if (rawPlatform && !isPlatform(rawPlatform)) {
+        res.status(400).json({ error: 'platform must be android or ios.' });
+        return;
+    }
+    const job = await enqueueCrawl('admin', country, rawPlatform || null);
     if (!job) {
         res.status(409).json({ error: 'A crawl is already pending or running.' });
         return;

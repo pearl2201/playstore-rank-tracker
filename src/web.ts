@@ -3,6 +3,8 @@ import { Op } from 'sequelize';
 import { config } from './config.js';
 import { initDb, sequelize, CurrentRank, RankHistory, DailySummary, TrackedCountry } from './db.js';
 import { adminRouter } from './admin.js';
+import { PLATFORMS, PLATFORM_LABELS, CATEGORIES, CATEGORY_LABELS, isPlatform, segmentKey } from './segments.js';
+import { withOtherStore } from './crossstore.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -15,7 +17,14 @@ app.use(express.static('public'));
 
 app.get('/api/config', async (_req, res) => {
     const rows = await TrackedCountry.findAll({ where: { enabled: true }, order: [['code', 'ASC']] });
-    res.json({ countries: rows.map(c => c.code.toUpperCase()) });
+    res.json({
+        countries: rows.map(c => c.code.toUpperCase()),
+        platforms: PLATFORMS.map(id => ({
+            id,
+            label: PLATFORM_LABELS[id],
+            categories: CATEGORIES[id].map(c => ({ id: c, label: CATEGORY_LABELS[c] }))
+        }))
+    });
 });
 
 app.get('/api/summary', async (_req, res) => {
@@ -25,12 +34,14 @@ app.get('/api/summary', async (_req, res) => {
 
 app.get('/api/ranks', async (req, res) => {
     const { country, collection, category } = req.query;
-    if (!country || !collection || !category) {
-        res.status(400).json({ error: 'Missing required query segment parameters.' });
+    const platform = req.query.platform ?? 'android';
+    if (!country || !collection || !category || !isPlatform(platform)) {
+        res.status(400).json({ error: 'Missing or invalid query parameters.' });
         return;
     }
-    const segment = `${String(country).toLowerCase()}_${collection}_${category}`;
-    res.json(await CurrentRank.findAll({ where: { segment }, order: [['current_rank', 'ASC']] }));
+    const segment = segmentKey(platform, String(country), String(collection), String(category));
+    const ranks = await CurrentRank.findAll({ where: { segment }, order: [['current_rank', 'ASC']] });
+    res.json(await withOtherStore(ranks, platform, String(country).toLowerCase()));
 });
 
 app.get('/api/track/:appId', async (req, res) => {

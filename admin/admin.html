@@ -48,9 +48,14 @@
   <section>
     <h2>Crawl</h2>
     <div class="row">
+      <select id="crawl-platform" style="padding:7px;border-radius:6px;background:#0f172a;color:inherit;border:1px solid #475569">
+        <option value="">Both stores</option>
+        <option value="android">Google Play</option>
+        <option value="ios">App Store</option>
+      </select>
       <button id="crawl-all">Re-crawl all enabled countries</button>
       <select id="crawl-country" style="padding:7px;border-radius:6px;background:#0f172a;color:inherit;border:1px solid #475569"></select>
-      <button id="crawl-one" class="secondary">Re-crawl selected</button>
+      <button id="crawl-one" class="secondary">Re-crawl selected country</button>
     </div>
     <p class="muted">Jobs are queued and run one at a time by the scraper worker (it checks every 10 seconds).</p>
     <div class="scroll">
@@ -94,7 +99,7 @@ async function loadJobs() {
     <tr>
       <td>${j.id}</td>
       <td class="status-${esc(j.status)}">${esc(j.status)}</td>
-      <td>${j.country ? esc(j.country.toUpperCase()) : 'all'}</td>
+      <td>${j.country ? esc(j.country.toUpperCase()) : 'all countries'} · ${j.platform ? esc(j.platform) : 'both stores'}</td>
       <td>${esc(j.trigger)}</td>
       <td>${new Date(j.requested_at).toLocaleString()}</td>
       <td class="muted">${esc(j.message)}</td>
@@ -131,9 +136,9 @@ $('countries').addEventListener('change', e => {
   guarded(async () => { await api('PATCH', '/countries/' + code, { enabled: e.target.checked }); });
 });
 
-$('crawl-all').addEventListener('click', () => guarded(async () => { await api('POST', '/jobs', {}); await loadJobs(); }));
+$('crawl-all').addEventListener('click', () => guarded(async () => { await api('POST', '/jobs', { platform: $('crawl-platform').value || undefined }); await loadJobs(); }));
 $('crawl-one').addEventListener('click', () => guarded(async () => {
-  await api('POST', '/jobs', { country: $('crawl-country').value }); await loadJobs();
+  await api('POST', '/jobs', { country: $('crawl-country').value, platform: $('crawl-platform').value || undefined }); await loadJobs();
 }));
 
 guarded(async () => { await loadCountries(); await loadJobs(); });

@@ -2,6 +2,7 @@ import {
     Sequelize, DataTypes, Model,
     type InferAttributes, type InferCreationAttributes, type CreationOptional
 } from 'sequelize';
+import pg from 'pg';
 import { config } from './config.js';
 
 const opts = {
@@ -10,12 +11,8 @@ const opts = {
     dialect: 'postgres' as const,
     logging: false,
     pool: { max: 4, min: 0, idle: 30000 },
-    dialectOptions: {
-        ssl: {
-            require: true,
-            rejectUnauthorized: false,
-        }
-    },
+    // DB_SSL=true for managed/remote Postgres that requires TLS; leave false for a local server
+    dialectOptions: config.db.ssl ? { ssl: { require: true, rejectUnauthorized: false } } : {},
     define: { timestamps: false, freezeTableName: true }
 };
 // Small pool: target server is 1 core / 2GB RAM
@@ -32,6 +29,10 @@ export class CurrentRank extends Model<InferAttributes<CurrentRank>, InferCreati
     declare score: number | null;
     declare url: string | null;
     declare last_updated: Date;
+    declare platform: CreationOptional<string>;             // 'android' | 'ios'
+    declare bundle_id: CreationOptional<string | null>;     // Android package name / iOS bundle id (cross-store match)
+    declare developer: CreationOptional<string | null>;
+    declare title_key: CreationOptional<string | null>;     // normalised title (cross-store fuzzy match)
 }
 CurrentRank.init({
     segment: { type: DataTypes.TEXT, primaryKey: true },
@@ -41,10 +42,18 @@ CurrentRank.init({
     current_rank: { type: DataTypes.INTEGER, allowNull: false },
     score: DataTypes.REAL,
     url: DataTypes.TEXT,
-    last_updated: { type: DataTypes.DATE, allowNull: false }
+    last_updated: { type: DataTypes.DATE, allowNull: false },
+    platform: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'android' },
+    bundle_id: DataTypes.TEXT,
+    developer: DataTypes.TEXT,
+    title_key: DataTypes.TEXT
 }, {
     sequelize, tableName: 'current_ranks',
-    indexes: [{ fields: ['segment', 'current_rank'] }]
+    indexes: [
+        { fields: ['segment', 'current_rank'] },
+        { fields: ['platform', 'bundle_id'] },
+        { fields: ['platform', 'title_key'] }
+    ]
 });
 
 export class RankHistory extends Model<InferAttributes<RankHistory>, InferCreationAttributes<RankHistory>> {
@@ -101,6 +110,7 @@ export class CrawlJob extends Model<InferAttributes<CrawlJob>, InferCreationAttr
     declare id: CreationOptional<number>;
     declare status: CreationOptional<JobStatus>;
     declare country: CreationOptional<string | null>; // null = all enabled countries
+    declare platform: CreationOptional<string | null>; // null = both stores
     declare trigger: CreationOptional<string>;        // 'cron' | 'admin' | 'cli'
     declare message: CreationOptional<string | null>;
     declare requested_at: CreationOptional<Date>;
@@ -111,6 +121,7 @@ CrawlJob.init({
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     status: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'pending' },
     country: DataTypes.STRING(2),
+    platform: DataTypes.STRING(7),
     trigger: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'admin' },
     message: DataTypes.TEXT,
     requested_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
@@ -118,11 +129,32 @@ CrawlJob.init({
     finished_at: DataTypes.DATE
 }, { sequelize, tableName: 'crawl_jobs', indexes: [{ fields: ['status'] }] });
 
-/** Create tables if missing and seed tracked countries from TRACKED_COUNTRIES on first run. */
+// Columns added after the first release. sequelize.sync() never alters existing tables,
+// so these idempotent statements bring older databases up to date (they run before sync()).
+const COLUMN_UPGRADES = [
+    `ALTER TABLE IF EXISTS current_ranks ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT 'android'`,
+    `ALTER TABLE IF EXISTS current_ranks ADD COLUMN IF NOT EXISTS bundle_id TEXT`,
+    `ALTER TABLE IF EXISTS current_ranks ADD COLUMN IF NOT EXISTS developer TEXT`,
+    `ALTER TABLE IF EXISTS current_ranks ADD COLUMN IF NOT EXISTS title_key TEXT`,
+    `ALTER TABLE IF EXISTS crawl_jobs ADD COLUMN IF NOT EXISTS platform VARCHAR(7)`
+];
+
+/**
+ * Create/upgrade tables and seed tracked countries from TRACKED_COUNTRIES on first run.
+ * Web and scraper both call this at startup, so it is serialised with a session-level advisory
+ * lock held on a dedicated connection (outside the pool, so lock and unlock can't land on
+ * different connections). Closing that connection always releases the lock.
+ */
 export async function initDb(): Promise<void> {
-    const lockId = 84729104; // Arbitrary unique integer lock ID for this app
-    await sequelize.query(`SELECT pg_advisory_lock(${lockId});`);
+    const lockClient = new pg.Client({
+        host: config.db.host, port: config.db.port, database: config.db.name,
+        user: config.db.user, password: config.db.password,
+        ssl: config.db.ssl ? { rejectUnauthorized: false } : undefined
+    });
+    await lockClient.connect();
     try {
+        await lockClient.query('SELECT pg_advisory_lock(84729104)');
+        for (const stmt of COLUMN_UPGRADES) await sequelize.query(stmt);
         await sequelize.sync();
         if ((await TrackedCountry.count()) === 0) {
             await TrackedCountry.bulkCreate(
@@ -130,13 +162,17 @@ export async function initDb(): Promise<void> {
             );
         }
     } finally {
-        await sequelize.query(`SELECT pg_advisory_unlock(${lockId});`);
+        await lockClient.end();
     }
 }
 
 /** Queue a crawl unless one is already pending/running. Returns null when rejected. */
-export async function enqueueCrawl(trigger: string, country: string | null = null): Promise<CrawlJob | null> {
+export async function enqueueCrawl(
+    trigger: string,
+    country: string | null = null,
+    platform: string | null = null
+): Promise<CrawlJob | null> {
     const active = await CrawlJob.findOne({ where: { status: ['pending', 'running'] } });
     if (active) return null;
-    return CrawlJob.create({ trigger, country });
+    return CrawlJob.create({ trigger, country, platform });
 }

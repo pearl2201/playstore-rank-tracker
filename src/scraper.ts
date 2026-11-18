@@ -2,6 +2,7 @@
 import cron from 'node-cron';
 import { initDb, sequelize, enqueueCrawl, CrawlJob } from './db.js';
 import { runScrapingPipeline } from './pipeline.js';
+import { isPlatform } from './segments.js';
 
 const POLL_MS = 10_000;
 let busy = false;
@@ -16,7 +17,7 @@ async function processNextJob(): Promise<void> {
 
         await job.update({ status: 'running', started_at: new Date() });
         try {
-            const message = await runScrapingPipeline(job.country);
+            const message = await runScrapingPipeline({ country: job.country, platform: isPlatform(job.platform) ? job.platform : null });
             await job.update({ status: 'done', finished_at: new Date(), message });
         } catch (err) {
             console.error('Scrape job failed:', err);
