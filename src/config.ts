@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const config = {
+const config = {
     port: Number(process.env.PORT || 3000),
     host: process.env.HOST || '127.0.0.1',
     telegramToken: process.env.TELEGRAM_TOKEN,
@@ -20,3 +20,4 @@ export const config = {
         ssl: process.env.DB_SSL === 'true'
     }
 };
+export { config};

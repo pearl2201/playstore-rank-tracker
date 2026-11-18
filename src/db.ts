@@ -4,16 +4,22 @@ import {
 } from 'sequelize';
 import { config } from './config.js';
 
-// Small pool: target server is 1 core / 2GB RAM
-export const sequelize = new Sequelize(config.db.name, config.db.user, config.db.password, {
+const opts = {
     host: config.db.host,
     port: config.db.port,
-    dialect: 'postgres',
+    dialect: 'postgres' as const,
     logging: false,
     pool: { max: 4, min: 0, idle: 30000 },
-    dialectOptions: config.db.ssl ? { ssl: { require: true, rejectUnauthorized: false } } : {},
+    dialectOptions: {
+        ssl: {
+            require: true,
+            rejectUnauthorized: false,
+        }
+    },
     define: { timestamps: false, freezeTableName: true }
-});
+};
+// Small pool: target server is 1 core / 2GB RAM
+export const sequelize = new Sequelize(config.db.name, config.db.user, config.db.password, opts);
 
 // Attribute names are snake_case on purpose: they are serialized as-is to the dashboard API.
 
@@ -114,11 +120,17 @@ CrawlJob.init({
 
 /** Create tables if missing and seed tracked countries from TRACKED_COUNTRIES on first run. */
 export async function initDb(): Promise<void> {
-    await sequelize.sync();
-    if ((await TrackedCountry.count()) === 0) {
-        await TrackedCountry.bulkCreate(
-            config.seedCountries.filter(c => /^[a-z]{2}$/.test(c)).map(code => ({ code }))
-        );
+    const lockId = 84729104; // Arbitrary unique integer lock ID for this app
+    await sequelize.query(`SELECT pg_advisory_lock(${lockId});`);
+    try {
+        await sequelize.sync();
+        if ((await TrackedCountry.count()) === 0) {
+            await TrackedCountry.bulkCreate(
+                config.seedCountries.filter(c => /^[a-z]{2}$/.test(c)).map(code => ({ code }))
+            );
+        }
+    } finally {
+        await sequelize.query(`SELECT pg_advisory_unlock(${lockId});`);
     }
 }
 
