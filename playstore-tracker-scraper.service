@@ -1,0 +1,19 @@
+[Unit]
+Description=Play Store Rank Tracker - scraper worker
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/playstore-tracker
+EnvironmentFile=/opt/playstore-tracker/.env
+Environment=NODE_ENV=production NODE_OPTIONS=--max-old-space-size=512
+ExecStart=/usr/bin/node dist/scraper.js
+Restart=always
+RestartSec=10s
+MemoryMax=700M
+Nice=10
+User=tracker
+SyslogIdentifier=playstore-scraper
+
+[Install]
+WantedBy=multi-user.target

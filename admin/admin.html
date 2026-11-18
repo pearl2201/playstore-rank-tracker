@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker Admin</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 24px 16px; background: #0f172a; color: #e2e8f0; font: 14px system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 0 0 12px; }
+  section { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #334155; }
+  .scroll { overflow-x: auto; }
+  input, button { font: inherit; padding: 7px 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: inherit; }
+  button { cursor: pointer; background: #4f46e5; border-color: #4f46e5; }
+  button.secondary { background: transparent; border-color: #475569; }
+  button.danger { background: transparent; border-color: #be123c; color: #fb7185; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .muted { color: #94a3b8; }
+  .status-done { color: #4ade80; } .status-failed { color: #fb7185; } .status-running { color: #fbbf24; } .status-pending { color: #94a3b8; }
+  #msg { min-height: 20px; margin-bottom: 12px; color: #fbbf24; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tracker Admin</h1>
+  <div id="msg"></div>
+
+  <section>
+    <h2>Tracked countries</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Code</th><th>Name</th><th>Enabled</th><th></th></tr></thead>
+        <tbody id="countries"></tbody>
+      </table>
+    </div>
+    <form id="add-form" class="row" style="margin-top:14px">
+      <input id="new-code" placeholder="code (us)" maxlength="2" size="8" required>
+      <input id="new-name" placeholder="name (optional)">
+      <button type="submit">Add country</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Crawl</h2>
+    <div class="row">
+      <button id="crawl-all">Re-crawl all enabled countries</button>
+      <select id="crawl-country" style="padding:7px;border-radius:6px;background:#0f172a;color:inherit;border:1px solid #475569"></select>
+      <button id="crawl-one" class="secondary">Re-crawl selected</button>
+    </div>
+    <p class="muted">Jobs are queued and run one at a time by the scraper worker (it checks every 10 seconds).</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>#</th><th>Status</th><th>Scope</th><th>By</th><th>Requested</th><th>Result</th></tr></thead>
+        <tbody id="jobs"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const H = { 'Content-Type': 'application/json', 'X-Requested-With': 'admin-panel' };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function say(text) { $('msg').textContent = text || ''; }
+
+async function api(method, url, body) {
+  const res = await fetch('/admin/api' + url, { method, headers: H, body: body ? JSON.stringify(body) : undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+  return data;
+}
+
+async function loadCountries() {
+  const list = await api('GET', '/countries');
+  $('countries').innerHTML = list.map(c => `
+    <tr>
+      <td><b>${esc(c.code.toUpperCase())}</b></td>
+      <td>${esc(c.name)}</td>
+      <td><input type="checkbox" ${c.enabled ? 'checked' : ''} data-toggle="${esc(c.code)}"></td>
+      <td><button class="danger" data-del="${esc(c.code)}">Delete</button></td>
+    </tr>`).join('') || '<tr><td colspan="4" class="muted">No countries.</td></tr>';
+  $('crawl-country').innerHTML = list.map(c => `<option value="${esc(c.code)}">${esc(c.code.toUpperCase())}</option>`).join('');
+}
+
+async function loadJobs() {
+  const jobs = await api('GET', '/jobs');
+  $('jobs').innerHTML = jobs.map(j => `
+    <tr>
+      <td>${j.id}</td>
+      <td class="status-${esc(j.status)}">${esc(j.status)}</td>
+      <td>${j.country ? esc(j.country.toUpperCase()) : 'all'}</td>
+      <td>${esc(j.trigger)}</td>
+      <td>${new Date(j.requested_at).toLocaleString()}</td>
+      <td class="muted">${esc(j.message)}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="muted">No jobs yet.</td></tr>';
+}
+
+async function guarded(fn) {
+  try { say(''); await fn(); } catch (e) { say(e.message); }
+}
+
+$('add-form').addEventListener('submit', e => {
+  e.preventDefault();
+  guarded(async () => {
+    await api('POST', '/countries', { code: $('new-code').value, name: $('new-name').value });
+    $('add-form').reset();
+    await loadCountries();
+  });
+});
+
+$('countries').addEventListener('click', e => {
+  const code = e.target.dataset.del;
+  if (!code) return;
+  if (e.target.dataset.armed !== '1') {           // two-step confirm (no confirm() dialogs in some viewers)
+    e.target.dataset.armed = '1';
+    e.target.textContent = 'Click again to delete';
+    return;
+  }
+  guarded(async () => { await api('DELETE', '/countries/' + code); await loadCountries(); });
+});
+
+$('countries').addEventListener('change', e => {
+  const code = e.target.dataset.toggle;
+  if (!code) return;
+  guarded(async () => { await api('PATCH', '/countries/' + code, { enabled: e.target.checked }); });
+});
+
+$('crawl-all').addEventListener('click', () => guarded(async () => { await api('POST', '/jobs', {}); await loadJobs(); }));
+$('crawl-one').addEventListener('click', () => guarded(async () => {
+  await api('POST', '/jobs', { country: $('crawl-country').value }); await loadJobs();
+}));
+
+guarded(async () => { await loadCountries(); await loadJobs(); });
+setInterval(() => loadJobs().catch(() => {}), 10000);
+</script>
+</body>
+</html>

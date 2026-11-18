@@ -1,17 +1,24 @@
 {
   "name": "playstore-rank-tracker",
   "version": "1.0.0",
-  "description": "An automated Google Play Store game ranking matrix tracker with internal scheduling and web dashboard.",
-  "main": "server.js",
+  "description": "Google Play game ranking tracker: web dashboard + admin panel and a separate scraper worker.",
+  "main": "dist/web.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "scrape:now": "node -e \"import('./cron.js').then(m => m.runScrapingPipeline())\""
+    "build": "tsc",
+    "start:web": "node dist/web.js",
+    "start:scraper": "node dist/scraper.js",
+    "dev:web": "tsx watch src/web.ts",
+    "dev:scraper": "tsx watch src/scraper.ts",
+    "scrape:now": "tsx src/enqueue.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "google-play-scraper",
     "node-cron",
-    "nedb",
+    "postgresql",
+    "sequelize",
+    "typescript",
     "telegram-bot",
     "express"
   ],
@@ -19,11 +26,18 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^17.4.2",
-    "express": "^5.2.1",
+    "express": "^5.3.0",
     "google-play-scraper": "^10.1.2",
-    "mongodb": "^7.2.0",
-    "nedb-promises": "^6.2.3",
     "node-cron": "^4.2.1",
-    "node-telegram-bot-api": "^0.67.0"
+    "node-telegram-bot-api": "^0.67.0",
+    "pg": "^8.23.1",
+    "sequelize": "^6.37.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/node-telegram-bot-api": "^0.64.15",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
   }
 }

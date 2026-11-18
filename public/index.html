@@ -17,11 +17,8 @@
                     <span class="text-indigo-500 bg-indigo-500/10 p-2 rounded-xl"><i class="fa-solid fa-chart-line"></i></span> 
                     Global Play Store App Insights
                 </h1>
-                <p class="text-slate-400 text-sm mt-1">Cross-category analysis engine handling automation cycles internally without cron constraints.</p>
+                <p class="text-slate-400 text-sm mt-1">Cross-category analysis engine refreshed nightly by a dedicated scraper worker.</p>
             </div>
-            <button onclick="triggerScrape()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-medium text-sm px-4 py-2.5 rounded-lg transition flex items-center gap-2 shadow-sm self-start lg:self-auto">
-                <i class="fa-solid fa-arrows-rotate" id="sync-icon"></i> Execute Full Data Sync
-            </button>
         </header>
 
         <section class="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-8 shadow-md">
@@ -203,20 +200,6 @@
 
         function closeModal() {
             document.getElementById('history-modal').classList.add('hidden');
-        }
-
-        async function triggerScrape() {
-            const icon = document.getElementById('sync-icon');
-            icon.classList.add('fa-spin');
-            try {
-                const res = await fetch('/api/trigger-scrape', { method: 'POST' });
-                const data = await res.json();
-                alert(data.message);
-            } catch (err) {
-                alert("Runtime background trigger initialization anomaly.");
-            } finally {
-                icon.classList.remove('fa-spin');
-            }
         }
 
         window.onload = initializeApp;
